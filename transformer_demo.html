@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How a Transformer Answers "What is the capital of India?"</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Space+Mono:wght@400;700&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#16181f; --panel2:#1c1f29; --ink:#e8e6df;
+    --muted:#8a8d99; --line:#2a2d39;
+    --input:#5b9dff; --core:#b06cff; --norm:#ffb454; --output:#ff6b5b;
+    --accent:#7df0c0; --hot:#ff4d6d;
+    --mono:'Space Mono',monospace; --body:'Spline Sans',sans-serif; --disp:'Fraunces',serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.5;
+    background-image:radial-gradient(circle at 12% 8%,rgba(91,157,255,.08),transparent 40%),
+                     radial-gradient(circle at 88% 92%,rgba(176,108,255,.08),transparent 42%);}
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 28px 120px}
+  header h1{font-family:var(--disp);font-weight:900;font-size:clamp(28px,5vw,52px);line-height:1.02;letter-spacing:-.02em}
+  header h1 em{font-style:italic;color:var(--accent)}
+  header p{color:var(--muted);max-width:680px;margin-top:14px;font-size:16px}
+
+  .control{margin:34px 0 8px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px 22px 24px}
+  .control label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .iorow{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .prompt{flex:1;min-width:260px;background:#0a0b0f;border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;color:var(--ink);font-family:var(--mono);font-size:15px}
+  .prompt:focus{outline:none;border-color:var(--input)}
+  button.run{background:var(--accent);color:#05140d;border:none;border-radius:12px;padding:14px 26px;
+    font-family:var(--mono);font-weight:700;font-size:14px;cursor:pointer;letter-spacing:.04em;transition:.2s}
+  button.run:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(125,240,192,.25)}
+  button.run:disabled{opacity:.4;cursor:wait;transform:none;box-shadow:none}
+  .answer{margin-top:16px;display:flex;align-items:center;gap:12px;font-size:15px;color:var(--muted)}
+  .answer .tok{font-family:var(--disp);font-weight:600;font-size:26px;color:var(--accent);opacity:0;transition:.4s}
+  .answer .tok.show{opacity:1}
+
+  .stage{display:grid;grid-template-columns:230px 1fr;gap:24px;margin-top:34px}
+  @media(max-width:820px){.stage{grid-template-columns:1fr}}
+
+  .pipe{display:flex;flex-direction:column;gap:0;position:sticky;top:20px;align-self:start}
+  .blk{border:1px solid var(--line);border-radius:12px;padding:11px 14px;background:var(--panel);cursor:pointer;
+    transition:.18s;position:relative}
+  .blk:hover{border-color:var(--accent)}
+  .blk.active{border-color:var(--accent);background:var(--panel2);box-shadow:0 0 0 1px var(--accent) inset}
+  .blk.done::after{content:"✓";position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--accent);font-size:12px}
+  .blk .t{font-weight:600;font-size:13.5px}
+  .blk .s{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+  .blk[data-c=input]{border-left:3px solid var(--input)}
+  .blk[data-c=core]{border-left:3px solid var(--core)}
+  .blk[data-c=norm]{border-left:3px solid var(--norm)}
+  .blk[data-c=output]{border-left:3px solid var(--output)}
+  .arrow{height:16px;display:flex;justify-content:center;align-items:center;color:var(--muted);font-size:13px}
+  .nlayers{font-family:var(--mono);font-size:9.5px;color:var(--muted);text-align:center;border:1px dashed var(--line);
+    border-radius:8px;padding:4px;margin:5px 0}
+
+  .detail{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px 30px;min-height:440px}
+  .detail .tag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 11px;border-radius:20px;margin-bottom:14px}
+  .detail h2{font-family:var(--disp);font-weight:600;font-size:30px;letter-spacing:-.01em}
+  .detail .lead{color:var(--ink);margin-top:10px;font-size:15.5px}
+  .detail .viz{margin-top:22px;background:#0a0b0f;border:1px solid var(--line);border-radius:14px;padding:20px;overflow-x:auto}
+  .detail .note{margin-top:18px;color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:14px}
+
+  /* token chips */
+  .toks{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:13px;padding:7px 11px;border-radius:9px;background:var(--panel2);border:1px solid var(--line)}
+  .chip .id{display:block;font-size:10px;color:var(--input);margin-top:3px}
+  .vec{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:var(--panel2);padding:6px 9px;border-radius:7px;border:1px solid var(--line)}
+
+  /* attention matrix */
+  table.attn{border-collapse:collapse;font-family:var(--mono);font-size:11px}
+  table.attn td,table.attn th{padding:6px 7px;text-align:center;color:var(--ink)}
+  table.attn th{color:var(--muted);font-weight:400}
+  .cell{border-radius:5px;min-width:34px;display:inline-block;padding:5px 0}
+
+  /* bars */
+  .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-family:var(--mono);font-size:12px}
+  .bar .lbl{width:96px;text-align:right;color:var(--ink)}
+  .bar .track{flex:1;height:18px;background:var(--panel2);border-radius:5px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:5px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .bar .pct{width:54px;color:var(--muted)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:30px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .ffn{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:12px}
+  .ffn .box{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel2);text-align:center}
+  .ffn .ar{color:var(--muted)}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Inside the machine:<br>how a transformer turns <em>“capital of India?”</em> into <em>“New Delhi.”</em></h1>
+  <p>Type a prompt, hit run, then click any block on the left to see exactly what happens to your words at that stage. Built to demo the full path — text in, token out — step by step.</p>
+</header>
+
+<div class="control">
+  <label>Your prompt</label>
+  <div class="iorow">
+    <input class="prompt" id="prompt" value="What is the capital of India?" spellcheck="false">
+    <button class="run" id="run">▶ Run the model</button>
+  </div>
+  <div class="answer">
+    <span>Predicted output:</span>
+    <span class="tok" id="outTok">New Delhi</span>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="pipe" id="pipe">
+    <div class="blk" data-c=output data-k="softmax"><div class="t">Softmax → Next Token</div><div class="s">pick by probability</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=output data-k="lmhead"><div class="t">LM Head (Unembedding)</div><div class="s">hidden → vocab logits</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=norm data-k="finalnorm"><div class="t">Final Layer Norm</div><div class="s">stabilize</div></div>
+    <div class="arrow">↑</div>
+    <div class="nlayers">Transformer block × N layers</div>
+    <div class="blk" data-c=norm data-k="addnorm2"><div class="t">Add &amp; Norm</div><div class="s">residual + norm</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=core data-k="ffn"><div class="t">Feed-Forward Network</div><div class="s">dense → GELU → dense</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=norm data-k="addnorm1"><div class="t">Add &amp; Norm</div><div class="s">residual + norm</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=core data-k="attn"><div class="t">Multi-Head Attention</div><div class="s">Q · K · V → context</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=norm data-k="layernorm"><div class="t">Layer Norm</div><div class="s">stabilize</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=input data-k="embed"><div class="t">Token + Positional Embed</div><div class="s">IDs → dense vectors</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=input data-k="tokenize"><div class="t">Tokenization</div><div class="s">words → token IDs</div></div>
+    <div class="arrow">↑</div>
+    <div class="blk" data-c=input data-k="input"><div class="t">“What is the capital…”</div><div class="s">raw text input</div></div>
+  </div>
+
+  <div class="detail" id="detail"></div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--input)"></i>Input processing</span>
+  <span><i style="background:var(--core)"></i>Core compute</span>
+  <span><i style="background:var(--norm)"></i>Normalization</span>
+  <span><i style="background:var(--output)"></i>Output</span>
+</div>
+<div class="hint">Tip: click “▶ Run the model” to animate the path, or click any block to inspect it.</div>
+</div>
+
+<script>
+const PROMPT = "What is the capital of India?";
+const TOKENS = ["What"," is"," the"," capital"," of"," India","?"];
+const IDS = [3923, 374, 279, 6864, 315, 6890, 30];
+
+const content = {
+  input:{c:'input',tag:'Step 1 · Input',title:'Raw text input',
+    lead:'You type a prompt. Neural networks only speak numbers, so this text must be converted before anything can happen. The <em>entire</em> string is fed in every step — that\'s why context windows matter.',
+    viz:`<div class="vec" style="font-size:14px">"What is the capital of India?"</div>`,
+    note:'Nothing has been computed yet. This is just the raw character string sitting at the gate.'},
+
+  tokenize:{c:'input',tag:'Step 2 · Tokenization',title:'Words → token IDs',
+    lead:'The text is chopped into <em>tokens</em> (sub-word pieces) and each is mapped to an integer ID from a fixed vocabulary (~100k entries). Notice leading spaces are part of the token.',
+    viz:()=>`<div class="toks">${TOKENS.map((t,i)=>`<span class="chip">"${t.replace(' ','␣')}"<span class="id">#${IDS[i]}</span></span>`).join('')}</div>`,
+    note:'"India" survives as one token; rarer words would split into several. The model never sees letters again — only these IDs.'},
+
+  embed:{c:'input',tag:'Step 3 · Embedding',title:'Token + Positional Embedding',
+    lead:'Each ID becomes a dense vector (e.g. 4096 numbers) capturing meaning. A <em>positional</em> signal is added so the model knows word order — "capital of India" ≠ "India of capital".',
+    viz:()=>`<div class="toks" style="flex-direction:column;align-items:flex-start;gap:6px">
+      ${TOKENS.slice(0,4).map((t)=>`<div class="vec">"${t.trim()}" → [ ${rnd(4).join(', ')} … ] <span style="color:var(--input)">+pos</span></div>`).join('')}
+      <div class="vec" style="color:var(--muted)">…4096 dimensions per token…</div></div>`,
+    note:'Similar words land near each other in this space. "India" sits close to "Delhi", "country", "nation".'},
+
+  layernorm:{c:'norm',tag:'Normalization',title:'Layer Norm',
+    lead:'Before heavy math, each vector is re-centered and scaled to a stable range. This keeps gradients sane and training stable — think of it as leveling the numbers so no dimension dominates.',
+    viz:()=>`<div class="bar"><span class="lbl">before</span><div class="track"><div class="fill" style="width:90%;background:var(--hot)"></div></div><span class="pct">σ≈4.1</span></div>
+      <div class="bar"><span class="lbl">after norm</span><div class="track"><div class="fill" style="width:40%;background:var(--accent)"></div></div><span class="pct">σ≈1.0</span></div>`,
+    note:'No information about meaning is lost — only the scale is standardized.'},
+
+  attn:{c:'core',tag:'Core compute',title:'Multi-Head Attention',
+    lead:'The star of the show. Every token looks at every other token and decides what to pay attention to. To predict the answer, the "?" token attends heavily to "capital" and "India" — gathering the context it needs.',
+    viz:()=>attnTable(),
+    note:'Each token forms a Query, compares it to every Key (Q·K), and pulls a weighted blend of Values. Multiple "heads" do this in parallel, each catching different relationships.'},
+
+  addnorm1:{c:'norm',tag:'Residual + Norm',title:'Add & Norm',
+    lead:'The attention output is <em>added back</em> to its input (a residual/skip connection), then normalized again. This lets information flow freely through deep stacks without vanishing.',
+    viz:()=>`<div class="ffn"><span class="box">attention out</span><span class="ar">+</span><span class="box">original input</span><span class="ar">→</span><span class="box" style="border-color:var(--accent)">Norm</span></div>`,
+    note:'Skip connections are why transformers can stack dozens of layers deep without collapsing.'},
+
+  ffn:{c:'core',tag:'Core compute',title:'Feed-Forward Network',
+    lead:'Each token vector passes through a small 2-layer network independently: expand → GELU activation → compress. This is where a lot of factual "knowledge" lives — patterns learned from training.',
+    viz:()=>`<div class="ffn"><span class="box">4096</span><span class="ar">→ dense →</span><span class="box" style="border-color:var(--core)">16384</span><span class="ar">→ GELU →</span><span class="box" style="border-color:var(--core)">16384</span><span class="ar">→ dense →</span><span class="box">4096</span></div>`,
+    note:'This is plausibly where the association India → capital → New Delhi is stored and activated.'},
+
+  addnorm2:{c:'norm',tag:'Residual + Norm',title:'Add & Norm',
+    lead:'Same trick again: add the FFN output back to its input and normalize. One attention + one FFN block = a single transformer layer. This whole block repeats N times (often 32–96 layers).',
+    viz:()=>`<div class="ffn"><span class="box">FFN out</span><span class="ar">+</span><span class="box">residual</span><span class="ar">→</span><span class="box" style="border-color:var(--accent)">Norm</span><span class="ar">↻ ×N</span></div>`,
+    note:'With each repeat, the representation sharpens toward a concrete answer.'},
+
+  finalnorm:{c:'norm',tag:'Normalization',title:'Final Layer Norm',
+    lead:'After the last transformer layer, one more normalization tidies up the final hidden state before it\'s turned into vocabulary scores.',
+    viz:()=>`<div class="vec">final hidden state (for "?" position) → [ ${rnd(6).join(', ')} … ]</div>`,
+    note:'Only the hidden state at the LAST position is used to predict the next token.'},
+
+  lmhead:{c:'output',tag:'Output',title:'LM Head — Unembedding',
+    lead:'The final hidden vector is multiplied against the vocabulary to produce a raw <em>logit</em> (score) for every possible next token — all ~100k of them.',
+    viz:()=>logitsBars(),
+    note:'Higher logit = the model thinks this token fits better. These are unbounded raw scores, not yet probabilities.'},
+
+  softmax:{c:'output',tag:'Output',title:'Softmax → Next Token',
+    lead:'Softmax squashes those logits into probabilities that sum to 1. The model samples (or picks the top) — here <em>"New Delhi"</em> wins decisively. That token is emitted, appended to the input, and the whole loop runs again for the next word.',
+    viz:()=>probBars(),
+    note:'Generation is autoregressive: one token at a time, feeding its own output back in. That loop is how full sentences appear.'}
+};
+
+function rnd(n){return Array.from({length:n},()=>(Math.random()*2-1).toFixed(2))}
+
+function attnTable(){
+  const labels=["What","is","the","capital","of","India","?"];
+  // attention weights FROM "?" row emphasized
+  const W=[
+    [.7,.05,.03,.05,.02,.1,.05],
+    [.1,.6,.1,.05,.05,.05,.05],
+    [.05,.1,.6,.1,.05,.05,.05],
+    [.05,.05,.05,.55,.05,.2,.05],
+    [.05,.05,.05,.1,.55,.15,.05],
+    [.05,.05,.05,.15,.05,.6,.05],
+    [.04,.03,.03,.34,.06,.42,.08]
+  ];
+  let h='<table class="attn"><tr><th></th>'+labels.map(l=>`<th>${l}</th>`).join('')+'</tr>';
+  W.forEach((row,i)=>{
+    h+=`<tr><th>${labels[i]}${i===6?' ◄':''}</th>`+row.map(v=>{
+      const a=v; const col=i===6?`rgba(125,240,192,${a})`:`rgba(176,108,255,${a})`;
+      return `<td><span class="cell" style="background:${col}">${(v*100|0)}</span></td>`}).join('')+'</tr>';
+  });
+  h+='</table>';
+  return h+'<div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px">Row = token doing the looking. The <span style="color:var(--accent)">"?" row (◄)</span> pours its attention into <b>capital</b> (34%) and <b>India</b> (42%) — exactly the words needed to answer.</div>';
+}
+
+function logitsBars(){
+  const d=[["New Delhi",8.7,'var(--accent)'],["Delhi",6.2,'var(--core)'],["Mumbai",3.1,'var(--norm)'],["the",1.4,'var(--muted)'],["a",0.9,'var(--muted)']];
+  const max=9;
+  return d.map(([l,v,c])=>`<div class="bar"><span class="lbl">${l}</span><div class="track"><div class="fill" style="width:${v/max*100}%;background:${c}"></div></div><span class="pct">${v.toFixed(1)}</span></div>`).join('')
+    +'<div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:10px">raw logits (one per vocab token — top 5 shown)</div>';
+}
+function probBars(){
+  const d=[["New Delhi",91,'var(--accent)'],["Delhi",6,'var(--core)'],["Mumbai",1.5,'var(--norm)'],["the",0.8,'var(--muted)'],["other…",0.7,'var(--muted)']];
+  return d.map(([l,v,c])=>`<div class="bar"><span class="lbl">${l}</span><div class="track"><div class="fill" style="width:${v}%;background:${c}"></div></div><span class="pct">${v}%</span></div>`).join('')
+    +'<div style="font-family:var(--mono);font-size:12px;color:var(--accent);margin-top:12px">► Emitted token: <b>"New Delhi"</b> ✓</div>';
+}
+
+const detail=document.getElementById('detail');
+const blks=[...document.querySelectorAll('.blk')];
+const cmap={input:'var(--input)',core:'var(--core)',norm:'var(--norm)',output:'var(--output)'};
+
+function show(k){
+  const d=content[k];
+  blks.forEach(b=>b.classList.toggle('active',b.dataset.k===k));
+  const viz=typeof d.viz==='function'?d.viz():d.viz;
+  detail.innerHTML=`<span class="tag" style="background:${cmap[d.c]}22;color:${cmap[d.c]}">${d.tag}</span>
+    <h2>${d.title}</h2><p class="lead">${d.lead}</p>
+    <div class="viz">${viz}</div><div class="note">${d.note}</div>`;
+}
+
+blks.forEach(b=>b.addEventListener('click',()=>show(b.dataset.k)));
+show('input');
+
+// run animation: bottom -> top
+const order=['input','tokenize','embed','layernorm','attn','addnorm1','ffn','addnorm2','finalnorm','lmhead','softmax'];
+const runBtn=document.getElementById('run');
+const outTok=document.getElementById('outTok');
+runBtn.addEventListener('click',()=>{
+  blks.forEach(b=>b.classList.remove('done'));
+  outTok.classList.remove('show');
+  runBtn.disabled=true;
+  // sync block label with current prompt's first words
+  let i=0;
+  const tick=()=>{
+    if(i>=order.length){runBtn.disabled=false;outTok.classList.add('show');return;}
+    const k=order[i];
+    show(k);
+    const b=blks.find(x=>x.dataset.k===k);
+    if(b){b.scrollIntoView({block:'nearest'});b.classList.add('done');}
+    i++;
+    setTimeout(tick,820);
+  };
+  tick();
+});
+
+// reflect custom prompt in the input block label (cosmetic)
+const promptEl=document.getElementById('prompt');
+promptEl.addEventListener('input',()=>{
+  const v=promptEl.value.trim()||'your prompt';
+  const lbl=blks.find(b=>b.dataset.k==='input').querySelector('.t');
+  lbl.textContent='“'+v.slice(0,22)+(v.length>22?'…':'')+'”';
+  content.input.viz=`<div class="vec" style="font-size:14px">"${v}"</div>`;
+});
+</script>
+</body>
+</html>
