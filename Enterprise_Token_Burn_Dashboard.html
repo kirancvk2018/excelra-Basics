@@ -1,0 +1,145 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Enterprise Token Burn Dashboard</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+body{font-family:Arial;background:#0f1117;color:white;margin:20px}
+.card{background:#1c2333;padding:12px;border-radius:10px;margin:8px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+input,select{width:100%;padding:6px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.kpi{background:#182030;padding:10px;border-radius:8px;text-align:center}
+pre{background:#111;padding:10px;border-radius:8px}
+button{padding:10px 20px}
+</style>
+</head>
+<body>
+
+<h1>Claude Code / Copilot Enterprise Token Burn Simulator</h1>
+
+<div class="grid">
+<div class="card">Model<br>
+<select id="model">
+<option>Claude Sonnet 4.6</option>
+<option>Claude Opus 4.8</option>
+<option>GPT-5.5</option>
+<option>Gemini 3 Pro</option>
+</select></div>
+
+<div class="card">Files<br><input id="files" value="100"></div>
+<div class="card">Lines/File<br><input id="lines" value="100"></div>
+<div class="card">Chars/Line<br><input id="chars" value="100"></div>
+
+<div class="card">Retrieved Files<br><input id="retrieved" value="20"></div>
+<div class="card">Tool Calls/Task<br><input id="toolcalls" value="10"></div>
+<div class="card">Output Tokens<br><input id="output" value="10000"></div>
+<div class="card">Iterations<br><input id="iters" value="10"></div>
+</div>
+
+<button onclick="run()">Simulate</button>
+
+<div class="kpis">
+<div class="kpi"><div>Repository</div><h2 id="repo"></h2></div>
+<div class="kpi"><div>Retrieved</div><h2 id="ctx"></h2></div>
+<div class="kpi"><div>Total Billed</div><h2 id="bill"></h2></div>
+<div class="kpi"><div>Total Cost</div><h2 id="cost"></h2></div>
+<div class="kpi"><div>Context Used</div><h2 id="util"></h2></div>
+</div>
+
+<div class="card">
+<pre id="workflow"></pre>
+</div>
+
+<div id="chart1"></div>
+<div id="chart2"></div>
+<div id="chart3"></div>
+<div id="chart4"></div>
+
+<script>
+const MODELS={
+"Claude Sonnet 4.6":{input:3,output:15,ctx:1000000},
+"Claude Opus 4.8":{input:5,output:25,ctx:1000000},
+"GPT-5.5":{input:5,output:30,ctx:1000000},
+"Gemini 3 Pro":{input:2,output:12,ctx:1000000}
+};
+
+function run(){
+let m=MODELS[document.getElementById('model').value];
+let files=+filesEl.value, lines=+linesEl.value, chars=+charsEl.value;
+let retrieved=+retrievedEl.value, tc=+toolcallsEl.value;
+let output=+outputEl.value, iters=+itersEl.value;
+
+let repo=(files*lines*chars)/4;
+let ctx=(retrieved*lines*chars)/4;
+let toolTokens=tc*2000;
+
+let history=0,totalCost=0,totalBill=0;
+let iter=[],costs=[],burn=[];
+
+for(let i=1;i<=iters;i++){
+ let input=ctx+toolTokens+history+6000;
+ let billed=input+output;
+ totalBill+=billed;
+ totalCost+=((input*m.input)+(output*m.output))/1000000;
+ history+=output;
+ iter.push(i);
+ costs.push(totalCost);
+ burn.push(billed);
+}
+
+document.getElementById('repo').innerHTML=Math.round(repo/1000)+"K";
+document.getElementById('ctx').innerHTML=Math.round(ctx/1000)+"K";
+document.getElementById('bill').innerHTML=Math.round(totalBill/1000)+"K";
+document.getElementById('cost').innerHTML="$"+totalCost.toFixed(2);
+document.getElementById('util').innerHTML=((ctx/m.ctx)*100).toFixed(1)+"%";
+
+workflow.textContent=`${files} Files
+↓
+${Math.round(repo).toLocaleString()} Tokens
+
+Claude Code
+↓
+Repository Search
+↓
+${retrieved} Files Retrieved
+↓
+${Math.round(ctx).toLocaleString()} Tokens
+
++ Tool Calls (${tc})
++ Planning
++ Verification
++ History
++ Output
+
+= Actual Billing`;
+
+Plotly.newPlot('chart1',[{labels:['Retrieved','Tool Calls','History Growth','Output'],
+values:[ctx,toolTokens,history,output],type:'pie'}],
+{title:'Token Breakdown'});
+
+Plotly.newPlot('chart2',[{x:iter,y:burn,type:'bar'}],
+{title:'Tokens Burned Per Iteration'});
+
+Plotly.newPlot('chart3',[{x:iter,y:costs,type:'scatter'}],
+{title:'Cumulative Cost'});
+
+Plotly.newPlot('chart4',[
+{x:['Full Repo','Claude/Copilot'],
+y:[repo,ctx],type:'bar'}],
+{title:'Repository vs Retrieval'});
+}
+
+const filesEl=document.getElementById('files');
+const linesEl=document.getElementById('lines');
+const charsEl=document.getElementById('chars');
+const retrievedEl=document.getElementById('retrieved');
+const toolcallsEl=document.getElementById('toolcalls');
+const outputEl=document.getElementById('output');
+const itersEl=document.getElementById('iters');
+run();
+</script>
+</body>
+</html>

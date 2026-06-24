@@ -1,0 +1,134 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Claude Code Budget Burn Calculator</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+body{font-family:Arial;background:#0f1117;color:#fff;margin:20px}
+.card{background:#1c2333;padding:12px;border-radius:10px;margin:8px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+input,select{width:100%;padding:6px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+.kpi{background:#182030;padding:10px;border-radius:8px;text-align:center}
+button{padding:10px 20px}
+pre{background:#111;padding:10px;border-radius:8px}
+</style>
+</head>
+<body>
+
+<h1>Claude Code Reverse Budget Calculator</h1>
+<p>Enter a monthly budget and estimate how much Claude Code usage would consume it.</p>
+
+<div class="grid">
+<div class="card">
+Model
+<select id="model">
+<option>Claude Sonnet 4.6</option>
+<option>Claude Opus 4.8</option>
+<option>GPT-5.5</option>
+<option>Gemini 3 Pro</option>
+</select>
+</div>
+
+<div class="card">Monthly Budget ($)<input id="budget" value="1000"></div>
+<div class="card">Avg Input Tokens / Prompt<input id="inputTokens" value="75000"></div>
+<div class="card">Avg Output Tokens / Prompt<input id="outputTokens" value="10000"></div>
+
+<div class="card">Prompts / Day<input id="promptsDay" value="100"></div>
+<div class="card">Working Days / Month<input id="days" value="22"></div>
+<div class="card">Tool Calls / Prompt<input id="toolCalls" value="10"></div>
+<div class="card">Tool Tokens / Call<input id="toolTokens" value="2000"></div>
+</div>
+
+<button onclick="calc()">Calculate</button>
+
+<div class="kpis">
+<div class="kpi"><div>Cost / Prompt</div><h2 id="cpp"></h2></div>
+<div class="kpi"><div>Prompts to Burn $1000</div><h2 id="prompts"></h2></div>
+<div class="kpi"><div>Monthly Tokens</div><h2 id="tokens"></h2></div>
+<div class="kpi"><div>Monthly Cost</div><h2 id="cost"></h2></div>
+</div>
+
+<pre id="summary"></pre>
+
+<div id="chart1"></div>
+<div id="chart2"></div>
+
+<script>
+const MODELS={
+"Claude Sonnet 4.6":{input:3,output:15},
+"Claude Opus 4.8":{input:5,output:25},
+"GPT-5.5":{input:5,output:30},
+"Gemini 3 Pro":{input:2,output:12}
+};
+
+function calc(){
+let m=MODELS[document.getElementById('model').value];
+let budget=+budgetEl.value;
+let input=+inputEl.value;
+let output=+outputEl.value;
+let promptsDay=+promptsDayEl.value;
+let days=+daysEl.value;
+let toolCalls=+toolCallsEl.value;
+let toolTokens=+toolTokensEl.value;
+
+let hidden=toolCalls*toolTokens;
+let totalInput=input+hidden;
+
+let costPrompt=((totalInput*m.input)+(output*m.output))/1000000;
+
+let promptsToBurn=budget/costPrompt;
+
+let monthlyPrompts=promptsDay*days;
+let monthlyTokens=(totalInput+output)*monthlyPrompts;
+let monthlyCost=costPrompt*monthlyPrompts;
+
+cpp.innerHTML="$"+costPrompt.toFixed(3);
+prompts.innerHTML=Math.round(promptsToBurn).toLocaleString();
+tokens.innerHTML=Math.round(monthlyTokens/1000000)+"M";
+cost.innerHTML="$"+monthlyCost.toFixed(0);
+
+summary.textContent=`Budget: $${budget}
+
+Average Prompt:
+Input Tokens: ${input.toLocaleString()}
+Hidden Tool Tokens: ${hidden.toLocaleString()}
+Output Tokens: ${output.toLocaleString()}
+
+Total Tokens/Prompt:
+${(totalInput+output).toLocaleString()}
+
+Prompts Needed To Burn Budget:
+${Math.round(promptsToBurn).toLocaleString()}
+
+Monthly Usage Scenario:
+${monthlyPrompts.toLocaleString()} prompts/month
+Estimated Cost = $${monthlyCost.toFixed(2)}`;
+
+Plotly.newPlot('chart1',[{
+labels:['Visible Input','Tool Tokens','Output'],
+values:[input,hidden,output],
+type:'pie'}],
+{title:'Per Prompt Token Breakdown'});
+
+Plotly.newPlot('chart2',[{
+x:['Budget','Projected Monthly Cost'],
+y:[budget,monthlyCost],
+type:'bar'}],
+{title:'Budget vs Usage'});
+}
+
+const budgetEl=document.getElementById('budget');
+const inputEl=document.getElementById('inputTokens');
+const outputEl=document.getElementById('outputTokens');
+const promptsDayEl=document.getElementById('promptsDay');
+const daysEl=document.getElementById('days');
+const toolCallsEl=document.getElementById('toolCalls');
+const toolTokensEl=document.getElementById('toolTokens');
+
+calc();
+</script>
+</body>
+</html>
